@@ -1,0 +1,28 @@
+# LOCAL OVERRIDE - not upstream. Delete this file to return to stock behaviour.
+#
+# MiroFish's startup gate treats a missing ZEP_API_KEY as fatal:
+#   backend/app/config.py  validate() -> errors.append("ZEP_API_KEY 未配置")
+#   backend/run.py         if errors: print(...); sys.exit(1)
+#
+# `concurrently --kill-others` then SIGTERMs the frontend, so the whole
+# container dies and restarts forever - "running" in `docker compose ps` while
+# nothing ever serves.
+#
+# Zep Cloud is a paid service (free tier: 10,000 credits/month). Self-hosting
+# the open-source Zep is explicitly refused by the upstream validator
+# ("ZEP_API_URL 不受支持；MiroFish 仅连接 Zep Cloud").
+#
+# This mounts a patched config.py that downgrades the Zep check to a warning so
+# the backend boots and the UI is reachable.
+#
+# WHAT THIS DOES NOT DO: it does not make simulations work. Agent profiles are
+# generated FROM Zep graph entities (oasis_profile_generator.py; /prepare step 2
+# is "read and filter entities from the Zep graph"), so a real simulation run
+# still needs a genuine Zep key. Zep-dependent routes return a clean
+# "not configured" error instead of taking the process down.
+
+services:
+  mirofish:
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
+      - ./patched/config.py:/app/backend/app/config.py:ro

@@ -1,28 +1,48 @@
 # LOCAL OVERRIDE - not upstream. Delete this file to return to stock behaviour.
 #
-# MiroFish's startup gate treats a missing ZEP_API_KEY as fatal:
-#   backend/app/config.py  validate() -> errors.append("ZEP_API_KEY 未配置")
-#   backend/run.py         if errors: print(...); sys.exit(1)
+# This does NOT re-apply the earlier ZEP_API_KEY patch. That one is obsolete now
+# that a real Zep key is configured, and its file is kept as
+# docker-compose.override.yml.disabled / patched/config.py for reference only.
 #
-# `concurrently --kill-others` then SIGTERMs the frontend, so the whole
-# container dies and restarts forever - "running" in `docker compose ps` while
-# nothing ever serves.
+# WHAT THIS FIXES: a truncation bug that stops graph building entirely.
 #
-# Zep Cloud is a paid service (free tier: 10,000 credits/month). Self-hosting
-# the open-source Zep is explicitly refused by the upstream validator
-# ("ZEP_API_URL 不受支持；MiroFish 仅连接 Zep Cloud").
+# app/utils/llm_client.py chat_json() is called with max_tokens=4096
+# (ontology_generator.py:200). Measured against gemini-3.6-flash on a 2KB
+# source document:
 #
-# This mounts a patched config.py that downgrades the Zep check to a warning so
-# the backend boots and the UI is reachable.
+#     max_tokens=4096    finish_reason=length   truncated mid-JSON -> crash
+#     max_tokens=16384   finish_reason=stop     10 entity + 9 edge types
 #
-# WHAT THIS DOES NOT DO: it does not make simulations work. Agent profiles are
-# generated FROM Zep graph entities (oasis_profile_generator.py; /prepare step 2
-# is "read and filter entities from the Zep graph"), so a real simulation run
-# still needs a genuine Zep key. Zep-dependent routes return a clean
-# "not configured" error instead of taking the process down.
+# Reasoning models spend thinking tokens against max_tokens and do not report
+# them in completion_tokens (usage showed 1164 against a 4096 cap), so the
+# budget is exhausted invisibly. The JSON returned is well-formed but cut off,
+# json.loads fails, and the upstream error says "LLM返回的JSON格式无效" -
+# blaming the model for a budget the caller chose. That message cost real time
+# to see through, so the patch also makes it name truncation explicitly.
+#
+# The floor is env-tunable via LLM_JSON_MAX_TOKENS (default 16384). It only ever
+# RAISES a caller's value, never lowers it, so no call site loses headroom.
+#
+# patched/llm_client.py was extracted FROM THE IMAGE, not copied from this
+# source tree - the two differ, and mounting a source file that does not match
+# the running code is how a patch silently breaks something else.
 
 services:
   mirofish:
+    # Local research workbench: never expose the unauthenticated API to the LAN.
+    # !override replaces upstream ports instead of retaining 0.0.0.0 bindings.
+    ports: !override
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:5001:5001"
+    mem_limit: 3g
+    cpus: 2.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/health', timeout=4).read(); urllib.request.urlopen('http://127.0.0.1:3000/', timeout=4).read()"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     volumes:
       - ./backend/uploads:/app/backend/uploads
-      - ./patched/config.py:/app/backend/app/config.py:ro
+      - ./patched/llm_client.py:/app/backend/app/utils/llm_client.py:ro
