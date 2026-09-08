@@ -13,7 +13,9 @@ to loopback and caps memory at 3 GiB, CPU at two cores, and processes at 256.
 There are no new scheduled jobs. Docker's existing `unless-stopped` policy remains.
 
 The current override mounts `patched/llm_client.py`, extracted from the running
-image, to preserve JSON output headroom for reasoning models. The old
+image, to preserve JSON output headroom for reasoning models. The override pins
+that tested image by SHA-256 digest so an upstream `latest` update cannot silently
+break the mounted patch. The old
 `patched/config.py` and disabled override record a superseded workaround; do not
 re-enable them just to hide missing Zep configuration. Serving the UI does not
 prove graph generation or simulations work.

@@ -29,6 +29,8 @@
 
 services:
   mirofish:
+    # The mounted client was extracted from this exact tested image.
+    image: ghcr.io/666ghj/mirofish@sha256:d236402eb35c5abfd68da63be9d19202d619da8803e173e8e34b97731180944a
     # Local research workbench: never expose the unauthenticated API to the LAN.
     # !override replaces upstream ports instead of retaining 0.0.0.0 bindings.
     ports: !override
