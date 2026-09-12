@@ -1,3 +1,35 @@
+# RETIRED 2026-09-11 - kept for reference only, mounted by nothing.
+#
+# WHY THIS IS NO LONGER USED. It raised a max_tokens floor so a reasoning model
+# could not exhaust the budget on unreported thinking tokens. The checked-out
+# source now fixes the same problem BETTER and at the right layer:
+#
+#   backend/app/services/ontology_generator.py:235   max_tokens=None
+#     "Structured ontology responses can exceed 4096 completion tokens,
+#      especially when a compatible provider counts hidden reasoning in the
+#      same budget. Let the provider use its model-specific limit."
+#   backend/app/utils/llm_client.py:241-246
+#     finish_reason == "length" -> LLMResponseError("LLM JSON output was
+#     truncated at the token limit"), plus one bounded retry with no cap.
+#
+# The caller no longer imposes a cap at all, so there is nothing for a floor to
+# raise. Keeping this mounted was strictly worse, in three measured ways:
+#
+#   1. IT LEAKED THE SOURCE DOCUMENT. Its last line is
+#      `raise ValueError(f"LLM...{hint}: {cleaned_response}")`, embedding the
+#      whole truncated model output; backend/app/api/graph.py returns str(e)
+#      into the HTTP response body. This checkout carries a test that FORBIDS
+#      exactly that - backend/tests/test_llm_json_responses.py
+#      ::test_chat_json_error_does_not_echo_partial_model_output.
+#   2. IT WAS A LANDMINE KEYED TO THE IMAGE PIN. graph.py:28 does
+#      `from ..utils.llm_client import LLMResponseError`. This file never
+#      defined that name, so mounting it over ANY newer image - including a
+#      local build of this checkout - stops the backend booting at all.
+#   3. IT WAS A SECOND DEFINITION of a rule the source already owns and tests.
+#
+# Retired the same way patched/config.py was once the real Zep key arrived: the
+# patch did its job, then upstream fixed it properly.
+
 """
 LLM客户端封装
 统一使用OpenAI格式调用

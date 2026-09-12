@@ -1,36 +1,37 @@
 # LOCAL OVERRIDE - not upstream. Delete this file to return to stock behaviour.
 #
-# This does NOT re-apply the earlier ZEP_API_KEY patch. That one is obsolete now
-# that a real Zep key is configured, and its file is kept as
-# docker-compose.override.yml.disabled / patched/config.py for reference only.
+# WHAT THIS DOES NOW: constrains a local research workbench, and nothing else.
+# It no longer patches the application. Two earlier patches are retired here:
 #
-# WHAT THIS FIXES: a truncation bug that stops graph building entirely.
+#   patched/config.py            obsolete once a real Zep key was configured
+#   patched/llm_client.py        obsolete once the source fixed truncation at
+#                                the call site (ontology_generator.py:235 passes
+#                                max_tokens=None, and chat_json raises
+#                                LLMResponseError on finish_reason == "length"
+#                                with one uncapped retry)
 #
-# app/utils/llm_client.py chat_json() is called with max_tokens=4096
-# (ontology_generator.py:200). Measured against gemini-3.6-flash on a 2KB
-# source document:
+# Both are kept as *.disabled for reference and each says in its own header why
+# it was retired. Read those before reinstating either.
 #
-#     max_tokens=4096    finish_reason=length   truncated mid-JSON -> crash
-#     max_tokens=16384   finish_reason=stop     10 entity + 9 edge types
+# WHY `build` AND NO DIGEST PIN. A pinned image plus a mounted source file is
+# two definitions of one program: the code that runs is not the code in this
+# checkout, and the mount silently breaks the moment the pin moves. Building
+# from this tree makes the running container BE this checkout - one definition -
+# and it is what makes the source-level truncation fix take effect at all. The
+# pinned digest (sha256:d236402e...) predates that fix.
 #
-# Reasoning models spend thinking tokens against max_tokens and do not report
-# them in completion_tokens (usage showed 1164 against a 4096 cap), so the
-# budget is exhausted invisibly. The JSON returned is well-formed but cut off,
-# json.loads fails, and the upstream error says "LLM返回的JSON格式无效" -
-# blaming the model for a budget the caller chose. That message cost real time
-# to see through, so the patch also makes it name truncation explicitly.
-#
-# The floor is env-tunable via LLM_JSON_MAX_TOKENS (default 16384). It only ever
-# RAISES a caller's value, never lowers it, so no call site loses headroom.
-#
-# patched/llm_client.py was extracted FROM THE IMAGE, not copied from this
-# source tree - the two differ, and mounting a source file that does not match
-# the running code is how a patch silently breaks something else.
+# The cost is honest and worth stating: `docker compose up --build` compiles
+# locally (python:3.11 + npm ci x2 + uv sync) instead of pulling a tested image,
+# so the first start is slow and the running code is newer than anything upstream
+# tagged. For a quarantined hypothesis generator that is the right trade; for
+# anything feeding a decision it would not be.
 
 services:
   mirofish:
-    # The mounted client was extracted from this exact tested image.
-    image: ghcr.io/666ghj/mirofish@sha256:d236402eb35c5abfd68da63be9d19202d619da8803e173e8e34b97731180944a
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mirofish-local:checkout
     # Local research workbench: never expose the unauthenticated API to the LAN.
     # !override replaces upstream ports instead of retaining 0.0.0.0 bindings.
     ports: !override
@@ -47,4 +48,3 @@ services:
       retries: 3
     volumes:
       - ./backend/uploads:/app/backend/uploads
-      - ./patched/llm_client.py:/app/backend/app/utils/llm_client.py:ro
