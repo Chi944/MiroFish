@@ -44,6 +44,25 @@ container with networking disabled, using the installed image. On Windows,
 26 pass and two symlink tests require an OS privilege unavailable to this shell;
 those same symlink protections passed in Linux. No tests were weakened.
 
+**Correction, 2026-09-13: "28 tests" was the root `tests/` directory only.** It
+left out `backend/tests` entirely - 129 tests at the current checkout, including
+the ones covering `backend/app/utils/llm_client.py`, the module a local patch was
+then mounted over. A pass count that omits the tests for the patched code does
+not certify the patch.
+
+Measured 2026-09-13 against the container now built from this checkout
+(`mirofish-local:checkout`, no mounted patch):
+
+    backend/tests   129 passed   (inside the running container)
+    tests/           26 passed in the container; the 2 others read
+                     .github/workflows/update-star-history.yml, which
+                     .dockerignore keeps out of the image. From the checkout
+                     on the host, that file's tests pass (8 of 8).
+
+The two container failures are the build context, not the code: a test that reads
+the repository cannot pass inside an image that deliberately excludes that part of
+the repository.
+
 Local integration changes are pushed to `fork` (`Chi944/MiroFish`) on
 `local/no-zep-boot`. The historical branch name predates the working Zep
 configuration; consult this file, not that name, for current behavior.
